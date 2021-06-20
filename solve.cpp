@@ -23,16 +23,14 @@ private:
             for (auto to = bucket.begin(); to != bucket.end(); ++to) {
                 size_t pos = hasher((*to)->first) % new_len;
                 if (!NewVersion[pos].empty()) {
-                    auto o = NewVersion[pos].back();
-                    ++o;
-                    NewTableOfValuesAndKeys.insert(o, *(*to));
-                    o--;
-                    NewVersion[pos].push_back(o);
+                    auto next = NewVersion[pos].back();
+                    auto cur = nex++;
+                    NewTableOfValuesAndKeys.insert(next, *(*to));
+                    NewVersion[pos].push_back(cur);
                 } else {
-                    auto o = NewTableOfValuesAndKeys.end();
-                    NewTableOfValuesAndKeys.insert(o, *(*to));
-                    o--;
-                    NewVersion[pos].push_back(o);
+                    auto cur = NewTableOfValuesAndKeys.end();
+                    NewTableOfValuesAndKeys.insert(cur, *(*to));
+                    NewVersion[pos].push_back(--cur);
                 }
             }
         }
