@@ -81,7 +81,6 @@ public:
 
     HashMap(const std::initializer_list<std::pair<const KeyType, ValueType>> &A, Hash new_hasher = Hash()) : HashMap(A.begin(), A.end(), new_hasher) {
     }
-
         HashMap() : HashMap({}, std::hash<KeyType>()) {
         }
 
