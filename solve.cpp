@@ -9,71 +9,71 @@ template <class KeyType, class ValueType, class Hash = std::hash<KeyType>>
 class HashMap {
 private:
     using PairValue = std::pair<const KeyType, ValueType>;
-    std::vector<std::list<typename std::list<PairValue>::iterator>> Table;
-    std::list<PairValue> Table1;
+    std::vector<std::list<typename std::list<PairValue>::iterator>> MainTable;
+    std::list<PairValue> TableOfValuesAndKeys;
 
     Hash hasher;
     size_t length = 0;
+    int RelocationConstant = 2;
 
     void reallocation(std::vector<std::list<typename std::list<PairValue>::iterator>>& A, std::list<PairValue> &T2, size_t new_len) {
-        std::vector<std::list<iterator>> B(new_len);
-        std::list<PairValue> T1;
+        std::vector<std::list<iterator>> NewVersion(new_len);
+        std::list<PairValue> NewTableOfValuesAndKeys;
         for (auto bucket : A) {
             for (auto to = bucket.begin(); to != bucket.end(); ++to) {
                 size_t pos = hasher((*to)->first) % new_len;
-                if (B[pos].size()) {
-                    auto o = B[pos].back();
+                if (!NewVersion[pos].empty()) {
+                    auto o = NewVersion[pos].back();
                     ++o;
-                    T1.insert(o, *(*to));
+                    NewTableOfValuesAndKeys.insert(o, *(*to));
                     o--;
-                    B[pos].push_back(o);
+                    NewVersion[pos].push_back(o);
                 } else {
-                    auto o = T1.end();
-                    T1.insert(o, *(*to));
+                    auto o = NewTableOfValuesAndKeys.end();
+                    NewTableOfValuesAndKeys.insert(o, *(*to));
                     o--;
-                    B[pos].push_back(o);
+                    NewVersion[pos].push_back(o);
                 }
             }
         }
-        this->Table = std::move(B);
-        this-> Table1 = std::move(T1);
+        this->MainTable = std::move(NewVersion);
+        this-> TableOfValuesAndKeys = std::move(NewTableOfValuesAndKeys);
     }
 
 public:
     using iterator = typename std::list<PairValue>::iterator;
     using const_iterator = typename std::list<PairValue>::const_iterator;
     void insert(const std::pair<KeyType,ValueType> &A) {
-        size_t pos = hasher(A.first) % Table.size();
+        size_t pos = hasher(A.first) % MainTable.size();
         bool ok = false;
-        for (auto to = Table[pos].begin(); to != Table[pos].end(); ++to) {
+        for (auto to = MainTable[pos].begin(); to != MainTable[pos].end(); ++to) {
             if ((*to)->first == A.first) {
                 ok = true;
                 break;
             }
         }
         if (!ok) {
-            if (Table[pos].size()) {
-                auto o = Table[pos].back();
-                ++o;
-                Table1.insert(o, A);
-                --o;
-                Table[pos].push_back(o);
+            if (MainTable[pos].size()) {
+                auto next = MainTable[pos].back();
+                auto cur = next++;
+                TableOfValuesAndKeys.insert(next, A);
+                MainTable[pos].push_back(cur);
             } else {
-                auto o = Table1.end();
-                Table1.insert(o, A);
-                o--;
-                Table[pos].push_back(o);
+                auto cur = TableOfValuesAndKeys.end();
+                TableOfValuesAndKeys.insert(cur, A);
+                --cur;
+                MainTable[pos].push_back(cur);
             }
             ++length;
         }
-        if (length == Table.size()) {
-            reallocation(Table, Table1, Table.size() * 2);
+        if (length == MainTable.size()) {
+            reallocation(MainTable, TableOfValuesAndKeys, MainTable.size() * RelocationConstant);
         }
     }
 
     template<class it>
     HashMap(it begin, it end, Hash new_hasher = Hash()) : hasher(new_hasher) {
-        Table.resize(2);
+        MainTable.resize(RelocationConstant);
         while (begin != end) {
             auto new_element = *begin;
             insert(new_element);
@@ -81,11 +81,7 @@ public:
         }
     }
 
-    HashMap(const std::initializer_list<std::pair<const KeyType, ValueType>> &A, Hash new_hasher = Hash()) : hasher(new_hasher) {
-        Table.resize(2);
-        for (const auto &to : A) {
-            insert(to);
-        }
+    HashMap(const std::initializer_list<std::pair<const KeyType, ValueType>> &A, Hash new_hasher = Hash()) : HashMap(A.begin(), A.end(), new_hasher) {
     }
 
         HashMap() : HashMap({}, std::hash<KeyType>()) {
@@ -105,42 +101,41 @@ public:
         }
 
         void erase(const KeyType &key) {
-            size_t pos = hasher(key) % Table.size();
-            for (auto iter = Table[pos].begin(); iter != Table[pos].end(); ++iter) {
+            size_t pos = hasher(key) % MainTable.size();
+            for (auto iter = MainTable[pos].begin(); iter != MainTable[pos].end(); ++iter) {
                 if ((*iter)->first == key) {
-                	Table1.erase(*iter);
-                    Table[pos].erase(iter);
+                 TableOfValuesAndKeys.erase(*iter);
+                    MainTable[pos].erase(iter);
                     --length;
                     break;
                 }
             }
-            if (length <= Table.size() / 4) {
-                size_t new_size = length * 2;
+            if (length <= MainTable.size() / (RelocationConstant * RelocationConstant)) {
+                size_t new_size = length * RelocationConstant;
                 if (new_size == 0) {
-                   new_size = 2;
+                   new_size = RelocationConstant;
                 }
-                reallocation(Table, Table1, new_size);
+                reallocation(MainTable, TableOfValuesAndKeys, new_size);
             }
         }
         iterator begin() {
-            return Table1.begin();
+            return TableOfValuesAndKeys.begin();
         }
 
         iterator end() {
-            return Table1.end();
+            return TableOfValuesAndKeys.end();
         }
 
         const_iterator begin() const {
-            return Table1.cbegin();
+            return TableOfValuesAndKeys.cbegin();
         }
 
         const_iterator end() const {
-           return Table1.end();
+           return TableOfValuesAndKeys.end();
         }
-
-        iterator find(const KeyType &key) {
-            size_t pos = hasher(key) % Table.size();
-            for (auto to = Table[pos].begin(); to != Table[pos].end(); ++to) {
+    iterator find(const KeyType &key) {
+            size_t pos = hasher(key) % MainTable.size();
+            for (auto to = MainTable[pos].begin(); to != MainTable[pos].end(); ++to) {
                 if ((*to)->first == key) {
                     return *to;
                 }
@@ -149,8 +144,8 @@ public:
         }
 
         const_iterator find(const KeyType &key) const {
-            size_t pos = hasher(key) % Table.size();
-            for (auto to = Table[pos].begin(); to != Table[pos].end(); ++to) {
+            size_t pos = hasher(key) % MainTable.size();
+            for (auto to = MainTable[pos].begin(); to != MainTable[pos].end(); ++to) {
                 if ((*to)->first == key) {
                     return *to;
                 }
@@ -170,7 +165,7 @@ public:
         const ValueType &at(const KeyType &K) const {
             auto to = find(K);
             if (to == end()) {
-           	   throw std::out_of_range("Shuba_Buba");
+               throw std::out_of_range("Shuba_Buba");
             }
             return (*to).second;
         }
@@ -178,7 +173,7 @@ public:
         HashMap(const HashMap &other) {
             clear();
             hasher = other.hasher;
-            for (const auto &to : other.Table1) {
+            for (const auto &to : other.TableOfValuesAndKeys) {
                 insert(to);
             }
         }
@@ -189,7 +184,7 @@ public:
             }
             this->clear();
             this->hasher = other.hasher;
-            for (const auto &it : other.Table1) {
+            for (const auto &it : other.TableOfValuesAndKeys) {
                 this->insert(it);
             }
             return *this;
@@ -200,14 +195,14 @@ public:
         }
 
         void clear() {
-            for (size_t t = 0; t < Table.size(); ++t) {
-                for (auto &to : Table[t]) {
-                    to = Table1.end();
+            for (size_t t = 0; t < MainTable.size(); ++t) {
+                for (auto &to : MainTable[t]) {
+                    to = TableOfValuesAndKeys.end();
                 }
             } 
-            Table.clear();
-            Table1.clear();
-            Table.resize(2);
+            MainTable.clear();
+            TableOfValuesAndKeys.clear();
+            MainTable.resize(RelocationConstant);
             length = 0;
         }
 };
